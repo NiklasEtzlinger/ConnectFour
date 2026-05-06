@@ -21,8 +21,8 @@
 %%%-----------------------------------------------------------------------------
 
 \author{Martin Scheuchenpflug, Niklas Etzlinger}
-\title{Artificial Intelligence -- SS 2026\\
-       Lab Report \arabic{chapter}: AI Project Connect Four}
+\title{Artificial Intelligence --- SS 2026\\
+       AI Project: Connect Four}
 \date{\today}
 
 \maketitle
@@ -52,7 +52,7 @@ In the original version the counts range from roughly 650 to 2400, depending
 on how many cutoffs the current board state enables.
 
 %%%-----------------------------------------------------------------------------
-\section{Pure Minimax -- No Pruning}
+\section{Pure Minimax --- No Pruning}
 \label{sec:q2}
 %%%-----------------------------------------------------------------------------
 
@@ -142,7 +142,7 @@ eliminate entire subtrees that the strict version would have explored.
 
 \subsection{Motivation}
 
-In the original code each function passes only one bound to its child -- either
+In the original code each function passes only one bound to its child --- either
 the parent MAX node's current best (alpha) or the parent MIN node's current
 minimum (beta). Information from grandparents and higher ancestors is silently
 discarded. \emph{Deep} alpha-beta threads both bounds through the entire tree:
@@ -217,7 +217,7 @@ private Move[] reorderMoves(Move[] moves) {
 \texttt{reorderMoves} is called at all three loop sites:
 \texttt{calculateMove}, \texttt{expandMaxNode}, and \texttt{expandMinNode}.
 
-\subsection{5a -- Pure Minimax with Middle-Out Ordering}
+\subsection{5a --- Pure Minimax with Middle-Out Ordering}
 
 With alpha-beta pruning disabled the traversal order has no effect on the
 \emph{number} of nodes visited: every node is expanded regardless. The move
@@ -227,13 +227,13 @@ appear in later moves because the computer now plays different moves (equal
 heuristic values are resolved in a different order), leading to a different
 board state and different numbers of full columns.
 
-\subsection{5b -- Deep Alpha-Beta with Middle-Out Ordering}
+\subsection{5b --- Deep Alpha-Beta with Middle-Out Ordering}
 
 Combining deep alpha-beta (Question~4) with middle-out ordering produces the
 lowest move counts of all variants (Table~\ref{tab:results}). By trying the
 best columns first, the algorithm establishes a tight $(\alpha, \beta)$ window
 early and cuts off the remaining columns with minimal effort. The reduction
-is dramatic -- move~1 drops from 993 (Question~4) to just 302.
+is dramatic --- move~1 drops from 993 (Question~4) to just 302.
 
 %%%-----------------------------------------------------------------------------
 \section*{Results Summary}
@@ -277,8 +277,19 @@ change under middle-out ordering.
      9 &  899 & 3978 &  793 &  665 & 2792 & 305 \\
     10 &  664 & 3641 &   59 &   59 & 2347 &  95 \\
     \hline
+    SUM & 10726 & 43760 & 8905 & 7773 & 41644 & 5764 \\
+    \hline
   \end{tabular}
 \end{table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=.7\textwidth]{PruningResult}
+  \caption{Move counts across all six variants visualised. Q2 and Q5a (pure
+           minimax) dominate; each pruning step reduces the count, with Q5b
+           (deep alpha-beta + middle-out ordering) achieving the lowest counts.}
+  \label{fig:pruning}
+\end{figure}
 \clearpage
 
 %%%-----------------------------------------------------------------------------
@@ -305,7 +316,7 @@ rows = new Vector<C4Row>(84);
 \end{JavaCode}
 
 This sets the initial capacity of the vector that stores every possible
-group of four consecutive slots -- the groups used by the heuristic to
+group of four consecutive slots --- the groups used by the heuristic to
 evaluate the board. The number~84 is the exact count of such groups on
 a $6 \times 8$ board, computed direction by direction:
 
@@ -384,9 +395,11 @@ The comment in the source claiming multipliers of 64 and 16 is outdated; the
 actual weights are \textbf{32\,:\,4\,:\,1}. Two special cases override the
 formula: a player with 4-in-a-row yields \texttt{Integer.MAX\_VALUE} (win);
 if the \emph{opponent} has 4-in-a-row the raw strength is~\texttt{0}.
-The value returned to minimax is always the difference:
+The value returned to minimax is always the difference between the current
+player's raw strength and the opponent's raw strength:
 \[
-  \texttt{getStrength}(p) = \text{strength}_p - \text{strength}_{\overline{p}}.
+  \texttt{getStrength}(\text{player}) =
+      \text{strength}_{\text{player}} - \text{strength}_{\text{opponent}}.
 \]
 
 \subsection{How is it computed? Object communication}
@@ -427,21 +440,6 @@ C4Board.move()
 \texttt{undoLastMove()} triggers the same chain in reverse, keeping all
 counters consistent without any board scan.
 
-\subsection{The restart bug}
-
-The counter fields in \texttt{C4Stats} are declared \texttt{static}, making
-them class-level variables shared across \emph{all} instances. When
-\texttt{C4Board.clone()} creates \texttt{clone.stats = new C4Stats()}, the new
-object still reads and writes the same static counters as the original board.
-The board-state copy loop then calls \texttt{setContents()} on the clone's
-slots, which fires the clone's freshly created \texttt{C4Row} listeners and
-increments the shared counters a second time. The current board state is thus
-added as a constant offset to every counter.
-
-Because the offset is identical for every leaf node in a single minimax call,
-the relative ordering of moves is unaffected---the extra constant cancels in
-the difference $\text{strength}_p - \text{strength}_{\overline{p}}$. The bug
-is therefore harmless in practice.
 
 %%%-----------------------------------------------------------------------------
 \section{Missing the Immediate Win}
@@ -498,7 +496,7 @@ starting from the best columns narrows the search window immediately and
 causes the remaining columns to be pruned with far less work.
 
 The Q5a result confirms the theoretical expectation that move ordering is
-irrelevant for pure minimax -- the counts stay near 4680 regardless of column
+irrelevant for pure minimax --- the counts stay near 4680 regardless of column
 order, with small deviations caused by the diverging game state.
 
 Question~6 shows that a single constant controls the board width throughout

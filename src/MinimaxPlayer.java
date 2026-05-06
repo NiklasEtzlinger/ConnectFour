@@ -15,12 +15,14 @@
  */
 public class MinimaxPlayer extends DefaultPlayer {
 
+  public enum PruningMode { Q1, Q2, Q3, Q4, Q5A, Q5B }
+
 //----------------------------------------------
   // instance variables
 
-  // the number of levels minimax will look ahead
   private int depth = 1;
   private Player minPlayer;
+  private PruningMode mode = PruningMode.Q1;
 
 //----------------------------------------------
   // constructors
@@ -28,38 +30,26 @@ public class MinimaxPlayer extends DefaultPlayer {
   /** Creates new MinimaxPlayer */
   public MinimaxPlayer(String name, int number, Player minPlayer) {
     super(name, number);
-
     this.minPlayer = minPlayer;
   }
 
 //----------------------------------------------
   // instance methods
 
-  /**
-   * Get the number of levels that the Minimax Player is currently looking ahead.
-   */
   public int getDepth() {
     return depth;
   }
 
-  /**
-   * Set the number of levels that the Minimax Player will look ahead when getMove
-   * is next called
-   */
   public void setDepth(int anInt) {
     depth = anInt;
   }
 
-  /**
-   * Passed a copy of the board, asked what move it would like to make.
-   *
-   * The MinimaxPlayer periodically polls the thread that makes this call to see
-   * if it is interrupted. If it is the player returns null.
-   *
-   * Looks ahead depth moves.
-   */
+  public void setMode(PruningMode m) {
+    mode = m;
+  }
+
   public Move getMove(Board b) {
-    MinimaxCalculator calc = new MinimaxCalculator(b, this, minPlayer);
+    MinimaxCalculator calc = new MinimaxCalculator(b, this, minPlayer, mode);
     return calc.calculateMove(depth);
   }
 
@@ -78,7 +68,6 @@ final class MinimaxCalculator {
   // middle-out column order for a 7-column board: centre first, then alternating outward
   private static final int[] COLUMN_ORDER = {3, 2, 4, 1, 5, 0, 6};
 
-  // the number of moves we have tried
   private int moveCount = 0;
   private long startTime;
 
@@ -89,19 +78,37 @@ final class MinimaxCalculator {
   private final int MAX_POSSIBLE_STRENGTH;
   private final int MIN_POSSIBLE_STRENGTH;
 
+  // flags derived from PruningMode
+  private final boolean usePruning;   // Q1,Q3,Q4,Q5B → true; Q2,Q5A → false
+  private final boolean deepPruning;  // Q4,Q5B → true; else false
+  private final boolean equalPruning; // Q3,Q4,Q5B → true; else false (strict >/<)
+  private final boolean middleOut;    // Q5A,Q5B → true; else false
+
 //-------------------------------------------------------
   // constructors
-  MinimaxCalculator(Board b, Player max, Player min) {
+  MinimaxCalculator(Board b, Player max, Player min, MinimaxPlayer.PruningMode mode) {
     board = b;
     maxPlayer = max;
     minPlayer = min;
 
     MAX_POSSIBLE_STRENGTH = board.getBoardStats().getMaxStrength();
     MIN_POSSIBLE_STRENGTH = board.getBoardStats().getMinStrength();
+
+    usePruning  = (mode != MinimaxPlayer.PruningMode.Q2 && mode != MinimaxPlayer.PruningMode.Q5A);
+    deepPruning = (mode == MinimaxPlayer.PruningMode.Q4 || mode == MinimaxPlayer.PruningMode.Q5B);
+    equalPruning = (mode == MinimaxPlayer.PruningMode.Q3 || mode == MinimaxPlayer.PruningMode.Q4
+                    || mode == MinimaxPlayer.PruningMode.Q5B);
+    middleOut   = (mode == MinimaxPlayer.PruningMode.Q5A || mode == MinimaxPlayer.PruningMode.Q5B);
   }
 
 //-------------------------------------------------------
   // instance methods
+
+  private Move[] getMoves(Player p) {
+    Move[] moves = board.getPossibleMoves(p);
+    if (middleOut) return reorderMoves(moves);
+    return moves;
+  }
 
   private Move[] reorderMoves(Move[] moves) {
     Move[] ordered = new Move[moves.length];
@@ -118,123 +125,113 @@ final class MinimaxCalculator {
     startTime = System.currentTimeMillis();
 
     if (depth == 0) {
-      System.out.println("Error, 0 depth in minumax player");
+      System.out.println("Error, 0 depth in minimax player");
       Thread.dumpStack();
       return null;
     }
 
-    Move[] moves = reorderMoves(board.getPossibleMoves(maxPlayer));
+    Move[] moves = getMoves(maxPlayer);
     int maxStrength = MIN_POSSIBLE_STRENGTH;
+    int alpha = MIN_POSSIBLE_STRENGTH;
     int maxIndex = 0;
 
     for (int i = 0; i < moves.length; i++) {
       if (board.move(moves[i])) {
         moveCount++;
 
-        int strength = expandMinNode(depth - 1, maxStrength, MAX_POSSIBLE_STRENGTH);
+        int childAlpha = deepPruning ? alpha : maxStrength;
+        int strength = expandMinNode(depth - 1, childAlpha, MAX_POSSIBLE_STRENGTH);
+
         if (strength > maxStrength) {
           maxStrength = strength;
           maxIndex = i;
         }
+        if (deepPruning && strength > alpha) alpha = strength;
         board.undoLastMove();
-      } // end if move made
-
-      // if the thread has been interrupted, return immediately.
-      if (Thread.currentThread().isInterrupted()) {
-        return null;
       }
 
-    } // end for all moves
+      if (Thread.currentThread().isInterrupted()) return null;
+    }
 
     long stopTime = System.currentTimeMillis();
     System.out.print("MINIMAX: Number of moves tried:" + moveCount);
     System.out.println(" Time:" + (stopTime - startTime) + " milliseconds");
 
     return moves[maxIndex];
-
   }
 
   /**
-   * A max node returns the max score of its descendents. parentMinimum is the
-   * minumum score that the parent has already encountered. if we find a score
-   * that is higher than this, we will return that score immediately rather than
-   * continue to expand the tree, since the min node above us only cares if we are
-   * lower than its current min score.
+   * A max node returns the max score of its descendants.
+   * alpha = best MAX can guarantee from ancestors; beta = MIN's current ceiling.
    */
   private int expandMaxNode(int depth, int alpha, int beta) {
-    // base step
     if (depth == 0 || board.isGameOver()) {
       return board.getBoardStats().getStrength(maxPlayer);
     }
 
-    // recursive step
-    Move[] moves = reorderMoves(board.getPossibleMoves(maxPlayer));
+    Move[] moves = getMoves(maxPlayer);
     int maxStrength = MIN_POSSIBLE_STRENGTH;
 
     for (int i = 0; i < moves.length; i++) {
       if (board.move(moves[i])) {
         moveCount++;
-        int strength = expandMinNode(depth - 1, alpha, beta);
 
-        // FIXME: a-b prune
-        // if (strength >= beta) {
-        //   board.undoLastMove();
-        //   return strength;
-        // }
-        if (strength > maxStrength) {
-          maxStrength = strength;
+        // deep: pass inherited alpha/beta; shallow: pass only local values
+        int childAlpha = deepPruning ? alpha       : maxStrength;
+        int childBeta  = deepPruning ? beta        : MAX_POSSIBLE_STRENGTH;
+        int strength = expandMinNode(depth - 1, childAlpha, childBeta);
+
+        if (usePruning) {
+          if (equalPruning ? (strength >= beta) : (strength > beta)) {
+            board.undoLastMove();
+            return strength;
+          }
         }
-        if (strength > alpha) {
-          alpha = strength;
-        }
+
+        if (strength > maxStrength) maxStrength = strength;
+        if (deepPruning && strength > alpha) alpha = strength;
         board.undoLastMove();
-      } // end if move made
-
-    } // end for all moves
+      }
+    }
 
     return maxStrength;
-
-  }// end expandMaxNode
+  }
 
   /**
-   * The min node chooses the smallest of its descendents. parentMaximum is the
-   * maximum that the parent max node has already found, if we find something
-   * smaller than this, return immediatly, since the parent max node will choose
-   * the greatest value it can find.
+   * A min node returns the min score of its descendants.
+   * alpha = MAX's global floor; beta = best MIN can guarantee from ancestors.
    */
   private int expandMinNode(int depth, int alpha, int beta) {
-    // base step
     if (depth == 0 || board.isGameOver()) {
       return board.getBoardStats().getStrength(maxPlayer);
     }
 
-    // recursive step
-    Move[] moves = reorderMoves(board.getPossibleMoves(minPlayer));
+    Move[] moves = getMoves(minPlayer);
     int minStrength = MAX_POSSIBLE_STRENGTH;
 
     for (int i = 0; i < moves.length; i++) {
       if (board.move(moves[i])) {
         moveCount++;
-        int strength = expandMaxNode(depth - 1, alpha, beta);
 
-        // FIXME: a-b prune
-        // if (strength <= alpha) {
-        //   board.undoLastMove();
-        //   return strength;
-        // }
-        if (strength < minStrength) {
-          minStrength = strength;
+        // deep: pass inherited alpha/beta; shallow: pass only local values
+        int childAlpha = deepPruning ? alpha       : MIN_POSSIBLE_STRENGTH;
+        int childBeta  = deepPruning ? beta        : minStrength;
+        int strength = expandMaxNode(depth - 1, childAlpha, childBeta);
+
+        if (usePruning) {
+          if (equalPruning ? (strength <= alpha) : (strength < alpha)) {
+            board.undoLastMove();
+            return strength;
+          }
         }
-        if (strength < beta) {
-          beta = strength;
-        }
+
+        if (strength < minStrength) minStrength = strength;
+        if (deepPruning && strength < beta) beta = strength;
         board.undoLastMove();
-      } // end if move made
-
-    } // end for all moves
+      }
+    }
 
     return minStrength;
-
-  }// end expandMinNode
+  }
 
 }

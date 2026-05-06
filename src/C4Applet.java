@@ -53,6 +53,7 @@ public class C4Applet extends Applet {
   // instance variables
   private Button restart;
   private Choice levels;
+  private Choice modes;
   private ImagePanel imagePanel;
 
   private MinimaxPlayer computer;
@@ -134,9 +135,20 @@ public class C4Applet extends Applet {
     levels.add(L8);
     levels.select(STARTING_LEVEL);
 
+    modes = new Choice();
+    modes.add("Q1");
+    modes.add("Q2");
+    modes.add("Q3");
+    modes.add("Q4");
+    modes.add("Q5a");
+    modes.add("Q5b");
+    modes.select("Q1");
+
     controlPanel.add(restart);
     controlPanel.add(new Label("              Level"));
     controlPanel.add(levels);
+    controlPanel.add(new Label("  Mode"));
+    controlPanel.add(modes);
 
     this.add(controlPanel, BorderLayout.SOUTH);
 
@@ -193,6 +205,14 @@ public class C4Applet extends Applet {
         computer.setDepth(8);
       }
 
+    } else if (evt.target.equals(modes)) {
+      String selected = modes.getSelectedItem();
+      if (selected.equals("Q1")) computer.setMode(MinimaxPlayer.PruningMode.Q1);
+      if (selected.equals("Q2")) computer.setMode(MinimaxPlayer.PruningMode.Q2);
+      if (selected.equals("Q3")) computer.setMode(MinimaxPlayer.PruningMode.Q3);
+      if (selected.equals("Q4")) computer.setMode(MinimaxPlayer.PruningMode.Q4);
+      if (selected.equals("Q5a")) computer.setMode(MinimaxPlayer.PruningMode.Q5A);
+      if (selected.equals("Q5b")) computer.setMode(MinimaxPlayer.PruningMode.Q5B);
     } else {
       return super.action(evt, arg);
     }

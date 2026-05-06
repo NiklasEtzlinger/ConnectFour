@@ -1,0 +1,15 @@
+C4Applet initializing
+Four in a row, created by Sean Bridges, www.geocities.com/sbridges.geo
+Loading images...
+Images loaded
+C4Applet starting
+MINIMAX: Number of moves tried:302 Time:1 milliseconds
+MINIMAX: Number of moves tried:360 Time:1 milliseconds
+MINIMAX: Number of moves tried:702 Time:1 milliseconds
+MINIMAX: Number of moves tried:899 Time:1 milliseconds
+MINIMAX: Number of moves tried:872 Time:2 milliseconds
+MINIMAX: Number of moves tried:773 Time:0 milliseconds
+MINIMAX: Number of moves tried:785 Time:2 milliseconds
+MINIMAX: Number of moves tried:671 Time:0 milliseconds
+MINIMAX: Number of moves tried:305 Time:1 milliseconds
+MINIMAX: Number of moves tried:95 Time:0 milliseconds

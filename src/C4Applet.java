@@ -11,10 +11,11 @@
  *
  */
 
-import com.sun.org.apache.xml.internal.resolver.helpers.FileURL;
-
 import java.applet.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
@@ -285,18 +286,43 @@ class ImagePanel extends Panel implements GameEventListener {
     this.computer = computer;
     this.human = human;
     game.addListener(this);
+
+    addMouseListener(new MouseAdapter() {
+      public void mousePressed(MouseEvent e) {
+        if (blackColumn != -1) {
+          C4Move move = new C4Move(human, blackColumn);
+          human.makeMove(move);
+        }
+      }
+    });
+    addMouseMotionListener(new MouseMotionAdapter() {
+      public void mouseMoved(MouseEvent e) {
+        int x = e.getX();
+        int y = e.getY();
+        if ((BOARD_TOP_X < x) & (x < (BOARD_TOP_X + BOARD_WIDTH))) {
+          if ((TIP_TOP_Y < y) & (y < (BOARD_TOP_Y + BOARD_HEIGHT))) {
+            int column = (x - BOARD_TOP_X - 10) / COLUMN_WIDTH;
+            if (column >= C4Board.NUMBER_OF_COLUMNS) column = -1;
+            setBlackColumn(column);
+          }
+        } else {
+          setBlackColumn(-1);
+        }
+      }
+    });
   }
 
 //----------------------------------------
   // instance methods
 
   public void paint(Graphics g) {
-    g.drawImage(offscreenImage, 0, 0, this);
+    if (offscreenImage == null) resetOffScreen();
+    if (offscreenImage != null) g.drawImage(offscreenImage, 0, 0, this);
   }
 
   public void update() {
     Graphics g = this.getGraphics();
-    g.drawImage(offscreenImage, 0, 0, this);
+    if (g != null && offscreenImage != null) g.drawImage(offscreenImage, 0, 0, this);
   }
 
 //----------------------------------------
@@ -356,6 +382,7 @@ class ImagePanel extends Panel implements GameEventListener {
 
   private void resetOffScreen() {
     offscreenImage = createImage(this.getSize().width, this.getSize().height);
+    if (offscreenImage == null) return;
     offscreenGraphics = offscreenImage.getGraphics();
     drawBoard();
     update();

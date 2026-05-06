@@ -1,0 +1,517 @@
+%% Lab Report: AI Project – Connect Four
+%%
+% !TeX encoding = utf8
+% !TeX program = pdflatex
+% !TeX spellcheck = en_US
+% !BIB program = biber
+
+\RequirePackage[utf8]{inputenc}
+\RequirePackage{hgbpdfa}
+
+\documentclass[language=english,titlepage=false,smartquotes=true]{hgbreport}
+
+\renewcommand{\chapter}[1]{}
+\graphicspath{{images/}}
+\bibliography{hgbreferences}
+\ExecuteBibliographyOptions{backref=false}
+
+\setcounter{chapter}{1}
+%%%-----------------------------------------------------------------------------
+\begin{document}
+%%%-----------------------------------------------------------------------------
+
+\author{Martin Scheuchenpflug, Niklas Etzlinger}
+\title{Artificial Intelligence -- SS 2026\\
+       Lab Report \arabic{chapter}: AI Project Connect Four}
+\date{\today}
+
+\maketitle
+
+\begin{abstract}\noindent
+This report documents the experimental analysis of the Minimax algorithm with
+alpha-beta pruning, applied to the game Connect Four. Five progressively
+refined versions of the \texttt{MinimaxPlayer} are evaluated by measuring the
+number of board positions examined per move at search depth~4. The
+modifications include removing pruning entirely, tightening the pruning
+condition to include equal values, enabling deep (full-window) alpha-beta
+pruning, and applying a move-ordering heuristic that prefers centre columns.
+\end{abstract}
+
+%%%-----------------------------------------------------------------------------
+\section{Measuring the Original Version}
+%%%-----------------------------------------------------------------------------
+
+The original \texttt{MinimaxPlayer} uses \emph{shallow} alpha-beta pruning:
+each recursive call passes only the immediate parent's current best value as a
+bound, discarding information from higher ancestors. The search depth is set
+to~4 (the application default) throughout all experiments.
+
+The number of positions examined by the computer per move was recorded for
+10 consecutive moves of a representative game (Table~\ref{tab:results}).
+In the original version the counts range from roughly 650 to 2400, depending
+on how many cutoffs the current board state enables.
+
+%%%-----------------------------------------------------------------------------
+\section{Pure Minimax -- No Pruning}
+\label{sec:q2}
+%%%-----------------------------------------------------------------------------
+
+\subsection{Code change}
+
+Both alpha-beta conditions were commented out so that no branch is ever cut:
+
+\begin{JavaCode}[numbers=none]
+// in expandMaxNode
+// FIXME: a-b prune
+// if (strength > parentMinimum) {
+//   board.undoLastMove();
+//   return strength;
+// }
+
+// in expandMinNode
+// FIXME: a-b prune
+// if (strength < parentMaximum) {
+//   board.undoLastMove();
+//   return strength;
+// }
+\end{JavaCode}
+
+\subsection{Formula for the exact move count}
+
+With pruning disabled the algorithm visits every node in the search tree. The
+board has $n = 8$ columns. Because each column holds 6 rows, all 8 columns
+remain available for the first many plies, so the branching factor is a
+constant~8 throughout the tree.
+
+The root (\texttt{calculateMove}) tries 8 moves and calls
+\texttt{expandMinNode}; each of those tries 8 moves and calls
+\texttt{expandMaxNode}; and so on for $d$~levels in total. The total node
+count is therefore the sum of a geometric series with ratio~8:
+
+\begin{equation}
+  \text{total}(d)
+    = 8 + 8^{2} + 8^{3} + \cdots + 8^{d}
+    = \frac{8^{d+1} - 8}{7}.
+  \label{eq:formula}
+\end{equation}
+
+For the default depth $d = 4$:
+\[
+  \frac{8^{5} - 8}{7} = \frac{32768 - 8}{7} = \frac{32760}{7} = 4680.
+\]
+
+The measured values confirm this: the first three moves of Question~2 all
+yield exactly 4680 (Table~\ref{tab:results}). Later moves fall slightly below
+4680 because some search paths encounter a terminal position (four-in-a-row)
+before reaching full depth and return without expanding further.
+
+%%%-----------------------------------------------------------------------------
+\section{Pruning with Equal Values}
+%%%-----------------------------------------------------------------------------
+
+\subsection{Code change}
+
+The original pruning uses strict inequalities: a value \emph{equal} to the
+parent's bound does not trigger a cutoff. Replacing \texttt{>} with
+\texttt{>=} (and \texttt{<} with \texttt{<=}) prunes these tie cases as well:
+
+\begin{JavaCode}[numbers=none]
+// expandMaxNode: beta cutoff now also fires on equality
+if (strength >= parentMinimum) {
+    board.undoLastMove();
+    return strength;
+}
+
+// expandMinNode: alpha cutoff now also fires on equality
+if (strength <= parentMaximum) {
+    board.undoLastMove();
+    return strength;
+}
+\end{JavaCode}
+
+\subsection{Effect}
+
+The move counts decrease consistently compared to Question~1 (Table~\ref{tab:results}).
+Ties are frequent early in the game: the heuristic assigns equal scores to
+many symmetric positions, so the additional cutoffs on equal values can
+eliminate entire subtrees that the strict version would have explored.
+
+%%%-----------------------------------------------------------------------------
+\section{Deep Alpha-Beta Pruning}
+%%%-----------------------------------------------------------------------------
+
+\subsection{Motivation}
+
+In the original code each function passes only one bound to its child -- either
+the parent MAX node's current best (alpha) or the parent MIN node's current
+minimum (beta). Information from grandparents and higher ancestors is silently
+discarded. \emph{Deep} alpha-beta threads both bounds through the entire tree:
+every node sees the tightest window established by \emph{all} its ancestors.
+
+\subsection{Code change}
+
+Both recursive functions were given a full $(\alpha, \beta)$ signature and
+update their respective bound locally before passing both values down:
+
+\begin{JavaCode}[numbers=none]
+private int expandMaxNode(int depth, int alpha, int beta) {
+    ...
+    int strength = expandMinNode(depth - 1, alpha, beta);
+    if (strength >= beta) {          // beta cutoff
+        board.undoLastMove();
+        return strength;
+    }
+    if (strength > maxStrength) maxStrength = strength;
+    if (strength > alpha) alpha = strength;  // tighten window
+    ...
+}
+
+private int expandMinNode(int depth, int alpha, int beta) {
+    ...
+    int strength = expandMaxNode(depth - 1, alpha, beta);
+    if (strength <= alpha) {         // alpha cutoff
+        board.undoLastMove();
+        return strength;
+    }
+    if (strength < minStrength) minStrength = strength;
+    if (strength < beta) beta = strength;    // tighten window
+    ...
+}
+\end{JavaCode}
+
+The root call initialises the window to the widest possible range:
+\begin{JavaCode}[numbers=none]
+int strength = expandMinNode(depth - 1, maxStrength, MAX_POSSIBLE_STRENGTH);
+\end{JavaCode}
+
+\subsection{Effect}
+
+Move counts drop further compared to Question~3 (Table~\ref{tab:results}).
+Whenever the $(\alpha, \beta)$ window is tightened at any level, all
+descendants benefit immediately rather than only the direct children.
+The gain is most visible in positions where good moves appear early and
+establish tight bounds quickly.
+
+%%%-----------------------------------------------------------------------------
+\section{Move-Ordering Heuristic}
+%%%-----------------------------------------------------------------------------
+
+Alpha-beta pruning is most effective when the best moves are considered first,
+because early good moves narrow the $(\alpha, \beta)$ window quickly and cause
+more cutoffs later. For Connect Four, centre columns are generally stronger
+than edge columns. A fixed middle-out order was implemented:
+
+\begin{JavaCode}[numbers=none]
+// 8-column board: centre pair first, alternating outward
+private static final int[] COLUMN_ORDER = {3, 4, 2, 5, 1, 6, 0, 7};
+
+private Move[] reorderMoves(Move[] moves) {
+    Move[] ordered = new Move[moves.length];
+    for (int i = 0; i < COLUMN_ORDER.length; i++) {
+        ordered[i] = moves[COLUMN_ORDER[i]];
+    }
+    return ordered;
+}
+\end{JavaCode}
+
+\texttt{reorderMoves} is called at all three loop sites:
+\texttt{calculateMove}, \texttt{expandMaxNode}, and \texttt{expandMinNode}.
+
+\subsection{5a -- Pure Minimax with Middle-Out Ordering}
+
+With alpha-beta pruning disabled the traversal order has no effect on the
+\emph{number} of nodes visited: every node is expanded regardless. The move
+counts therefore remain close to 4680 and follow the same formula as
+Section~\ref{sec:q2} (Table~\ref{tab:results}). Minor deviations from 4680
+appear in later moves because the computer now plays different moves (equal
+heuristic values are resolved in a different order), leading to a different
+board state and different numbers of full columns.
+
+\subsection{5b -- Deep Alpha-Beta with Middle-Out Ordering}
+
+Combining deep alpha-beta (Question~4) with middle-out ordering produces the
+lowest move counts of all variants (Table~\ref{tab:results}). By trying the
+best columns first, the algorithm establishes a tight $(\alpha, \beta)$ window
+early and cuts off the remaining columns with minimal effort. The reduction
+is dramatic -- move~1 drops from 993 (Question~4) to just 302.
+
+%%%-----------------------------------------------------------------------------
+\section*{Results Summary}
+%%%-----------------------------------------------------------------------------
+
+Table~\ref{tab:results} collects all measurements. Notes on comparability:
+Questions~1--4 were measured on the same sequence of human moves (the computer
+responds identically in all versions that use the same evaluation order).
+Questions~5a and~5b diverge from move~2 onwards because the computer's choices
+change under middle-out ordering.
+
+\begin{table}[H]
+  \centering\small
+  \caption{Number of moves examined per computer turn at depth~4.
+           Columns correspond to the six experimental variants.}
+  \label{tab:results}
+  \begin{tabular}{r rrrrrr}
+    \hline
+    \textbf{Move} &
+    \textbf{Q1} &
+    \textbf{Q2} &
+    \textbf{Q3} &
+    \textbf{Q4} &
+    \textbf{Q5a} &
+    \textbf{Q5b} \\
+    & \small original &
+    \small pure minimax &
+    \small ${\geq}$ prune &
+    \small deep a-b &
+    \small pure + order &
+    \small deep + order \\
+    \hline
+     1 & 1426 & 4680 & 1208 &  993 & 4680 & 302 \\
+     2 &  925 & 4680 &  771 &  642 & 4680 & 360 \\
+     3 &  654 & 4680 &  574 &  514 & 4650 & 702 \\
+     4 &  809 & 4623 &  745 &  612 & 4538 & 899 \\
+     5 & 1221 & 4622 & 1158 &  934 & 4650 & 872 \\
+     6 & 2459 & 4056 & 2007 & 1936 & 4649 & 773 \\
+     7 &  909 & 4544 &  854 &  754 & 4333 & 785 \\
+     8 &  760 & 4256 &  736 &  664 & 4325 & 671 \\
+     9 &  899 & 3978 &  793 &  665 & 2792 & 305 \\
+    10 &  664 & 3641 &   59 &   59 & 2347 &  95 \\
+    \hline
+  \end{tabular}
+\end{table}
+\clearpage
+
+%%%-----------------------------------------------------------------------------
+\section{Reducing to 7 Columns}
+%%%-----------------------------------------------------------------------------
+
+\subsection{Changing the column count}
+
+Standard Connect Four is played on a $6 \times 7$ board. The original code
+uses \texttt{NUMBER\_OF\_COLUMNS = 8}. Changing this constant to~7 is
+sufficient to play the game correctly; all array sizes and loop bounds
+throughout \texttt{C4Board.java} are derived from the constant at compile time.
+
+\begin{JavaCode}[numbers=none]
+public static final int NUMBER_OF_COLUMNS = 7; // was 8
+\end{JavaCode}
+
+\subsection{The magic number 84}
+
+One line in \texttt{C4Board.java} is not derived from the constants:
+
+\begin{JavaCode}[numbers=none]
+rows = new Vector<C4Row>(84);
+\end{JavaCode}
+
+This sets the initial capacity of the vector that stores every possible
+group of four consecutive slots -- the groups used by the heuristic to
+evaluate the board. The number~84 is the exact count of such groups on
+a $6 \times 8$ board, computed direction by direction:
+
+\begin{center}
+\begin{tabular}{lll}
+  \hline
+  Direction & Formula & $6 \times 8$ \\
+  \hline
+  Horizontal          & $R \cdot (C-3)$         & $6 \cdot 5 = 30$ \\
+  Vertical            & $(R-3) \cdot C$         & $3 \cdot 8 = 24$ \\
+  Diagonal $\nearrow$ & $(R-3) \cdot (C-3)$     & $3 \cdot 5 = 15$ \\
+  Diagonal $\searrow$ & $(R-3) \cdot (C-3)$     & $3 \cdot 5 = 15$ \\
+  \hline
+  Total               &                         & $84$ \\
+  \hline
+\end{tabular}
+\end{center}
+
+The general formula in terms of \texttt{NUMBER\_OF\_ROWS} ($R$) and
+\texttt{NUMBER\_OF\_COLUMNS} ($C$) is:
+
+\begin{equation}
+  R(C-3) + (R-3)C + 2(R-3)(C-3).
+  \label{eq:rows}
+\end{equation}
+
+For the standard $6 \times 7$ board this gives
+$6 \cdot 4 + 3 \cdot 7 + 2 \cdot 3 \cdot 4 = 24 + 21 + 24 = 69$.
+
+The fix replaces the hard-coded literal with the formula so it remains
+correct for any board size:
+
+\begin{JavaCode}[numbers=none]
+rows = new Vector<C4Row>(
+    NUMBER_OF_ROWS * (NUMBER_OF_COLUMNS - 3)
+    + (NUMBER_OF_ROWS - 3) * NUMBER_OF_COLUMNS
+    + 2 * (NUMBER_OF_ROWS - 3) * (NUMBER_OF_COLUMNS - 3));
+\end{JavaCode}
+
+The move-ordering array in \texttt{MinimaxPlayer.java} was also updated from
+the 8-element sequence to the correct 7-element centre-out order:
+
+\begin{JavaCode}[numbers=none]
+// 7-column board: centre column 3 first, alternating outward
+private static final int[] COLUMN_ORDER = {3, 2, 4, 1, 5, 0, 6};
+\end{JavaCode}
+
+After these three changes the game runs correctly on the standard
+$6 \times 7$ board.
+
+%%%-----------------------------------------------------------------------------
+\section{The Heuristic Evaluation Function}
+%%%-----------------------------------------------------------------------------
+
+\subsection{What quantities does it compute, and how are they weighted?}
+
+The heuristic counts \emph{open groups}: groups of 4 consecutive slots
+(horizontal, vertical, or diagonal) that contain tokens of only one player---the
+other player has placed no token in the group yet, so it can still be
+completed into a four-in-a-row. A group with tokens of both players is
+\emph{dead} and counted for neither. For each player the number of open groups
+of size 1, 2, and 3 is tracked separately.
+
+The raw strength of a player is computed in \texttt{C4Stats}:
+
+\begin{JavaCode}[numbers=none]
+// SHIFT_3_IN_A_ROW = 5  =>  x32
+// SHIFT_2_IN_A_ROW = 2  =>  x4
+return (p1_2InARow << SHIFT_2_IN_A_ROW)
+     + (p1_3InARow << SHIFT_3_IN_A_ROW)
+     + p1_1InARow;
+// i.e. 32*(3-in-a-row) + 4*(2-in-a-row) + 1*(1-in-a-row)
+\end{JavaCode}
+
+The comment in the source claiming multipliers of 64 and 16 is outdated; the
+actual weights are \textbf{32\,:\,4\,:\,1}. Two special cases override the
+formula: a player with 4-in-a-row yields \texttt{Integer.MAX\_VALUE} (win);
+if the \emph{opponent} has 4-in-a-row the raw strength is~\texttt{0}.
+The value returned to minimax is always the difference:
+\[
+  \texttt{getStrength}(p) = \text{strength}_p - \text{strength}_{\overline{p}}.
+\]
+
+\subsection{How is it computed? Object communication}
+
+The evaluation is never recomputed from scratch. It is maintained
+\emph{incrementally} through a chain of event notifications that follow the
+Observer pattern.
+
+\textbf{C4Slot} is the \emph{subject}. It stores the content of one cell and
+holds a list of \texttt{C4SlotListener} objects. Whenever \texttt{setContents()}
+is called it fires \texttt{contentsChanged(old,~new)} on every registered
+listener.
+
+\textbf{C4Row} is the \emph{observer}. Each instance represents one group of
+4 consecutive slots and implements \texttt{C4SlotListener}. Its constructor
+registers it on all four slots. It maintains counters \texttt{numPlayer1} and
+\texttt{numPlayer2}. On notification it updates these counters and calls the
+matching \texttt{Inc}/\texttt{Dec} method on the shared \texttt{C4Stats}
+object---for example, if player~1 now has 2 tokens in the group and the
+opponent has none, it calls \texttt{stats.p1\_1InARowDec()} followed by
+\texttt{stats.p1\_2InARowInc()}.
+
+\textbf{C4Stats} is the \emph{global accumulator}. It holds board-wide
+counters that \texttt{getStrength()} simply reads---evaluation costs
+\emph{O(1)}. A slot can participate in up to 11 overlapping groups, which
+is why \texttt{C4Slot} pre-allocates its listener array with capacity~11.
+
+The full call chain on every \texttt{board.move()} is:
+
+\begin{JavaCode}[numbers=none]
+C4Board.move()
+  -> slot.setContents(playerNumber)
+    -> notifies each listening C4Row
+      -> row.contentsChanged() updates numPlayer1 / numPlayer2
+        -> calls stats.pX_NInARowInc() or Dec()
+\end{JavaCode}
+
+\texttt{undoLastMove()} triggers the same chain in reverse, keeping all
+counters consistent without any board scan.
+
+\subsection{The restart bug}
+
+The counter fields in \texttt{C4Stats} are declared \texttt{static}, making
+them class-level variables shared across \emph{all} instances. When
+\texttt{C4Board.clone()} creates \texttt{clone.stats = new C4Stats()}, the new
+object still reads and writes the same static counters as the original board.
+The board-state copy loop then calls \texttt{setContents()} on the clone's
+slots, which fires the clone's freshly created \texttt{C4Row} listeners and
+increments the shared counters a second time. The current board state is thus
+added as a constant offset to every counter.
+
+Because the offset is identical for every leaf node in a single minimax call,
+the relative ordering of moves is unaffected---the extra constant cancels in
+the difference $\text{strength}_p - \text{strength}_{\overline{p}}$. The bug
+is therefore harmless in practice.
+
+%%%-----------------------------------------------------------------------------
+\section{Missing the Immediate Win}
+%%%-----------------------------------------------------------------------------
+
+Sometimes the computer can win in one move but plays a different move instead.
+The root cause is that the heuristic assigns \emph{exactly the same score} to
+every winning position regardless of how many moves away the win is:
+\texttt{firstPlayerStrength()} returns \texttt{Integer.MAX\_VALUE} whenever
+\texttt{p1\_4InARow != 0}, whether the win occurred at depth~1 or depth~3.
+
+The move-selection loop in \texttt{calculateMove} updates its best move only
+on a \emph{strict} improvement:
+
+\begin{JavaCode}[numbers=none]
+if (strength > maxStrength) {
+    maxStrength = strength;
+    maxIndex = i;
+}
+\end{JavaCode}
+
+Consider the following situation at depth~4 with left-to-right move ordering:
+
+\begin{enumerate}
+  \item Move at column~0 is tried first. The search finds a forced win in
+        3~more moves somewhere in the tree and returns
+        \texttt{Integer.MAX\_VALUE}. \texttt{maxIndex = 0}.
+  \item Move at column~3 is the immediate one-move win. After placing the
+        piece \texttt{board.isGameOver()} is true, so
+        \texttt{expandMinNode} returns \texttt{Integer.MAX\_VALUE}
+        immediately.
+  \item \texttt{Integer.MAX\_VALUE > Integer.MAX\_VALUE} is \textbf{false},
+        so \texttt{maxIndex} remains~0.
+  \item The computer plays column~0---a winning move, but not the
+        immediate one.
+\end{enumerate}
+
+The computer still wins the game; it simply does not do so as quickly as
+possible. A fix would be to encode the win depth in the score, e.g.\
+\texttt{Integer.MAX\_VALUE\,$-$\,depth}, so shallower wins always outrank
+deeper ones. The current code makes no such distinction.
+
+%%%-----------------------------------------------------------------------------
+\section*{Summary and Comments}
+%%%-----------------------------------------------------------------------------
+
+The experiments clearly show the cumulative effect of each optimisation.
+Removing pruning (Q2) inflates the count to the theoretical maximum of
+$\frac{8^{5}-8}{7} = 4680$ nodes. Restoring shallow pruning with equal-value
+cutoffs (Q3) already reduces counts substantially below the original (Q1).
+Deep alpha-beta (Q4) cuts further by propagating bounds from all ancestors.
+Finally, middle-out move ordering (Q5b) delivers the largest single reduction:
+starting from the best columns narrows the search window immediately and
+causes the remaining columns to be pruned with far less work.
+
+The Q5a result confirms the theoretical expectation that move ordering is
+irrelevant for pure minimax -- the counts stay near 4680 regardless of column
+order, with small deviations caused by the diverging game state.
+
+Question~6 shows that a single constant controls the board width throughout
+the program, with the exception of the hard-coded vector capacity~84. That
+literal encodes the number of four-in-a-row groups on the original
+$6 \times 8$ board; its general form (Equation~\ref{eq:rows}) evaluates to~69
+for the standard $6 \times 7$ configuration.
+
+Question~7 reveals an elegant incremental design: the heuristic is maintained
+at O(1) cost per move through the Observer pattern, with \texttt{C4Row}
+objects listening to individual slots and propagating changes into a shared
+\texttt{C4Stats} accumulator.
+
+%%%-----------------------------------------------------------------------------
+\end{document}
+%%%-----------------------------------------------------------------------------

@@ -1,0 +1,58 @@
+C4Applet initializing
+Four in a row, created by Sean Bridges, www.geocities.com/sbridges.geo
+Loading images...
+Images loaded
+C4Applet starting
+MINIMAX: Number of moves tried:4680 Time:3 milliseconds
+MINIMAX: Number of moves tried:4680 Time:4 milliseconds
+MINIMAX: Number of moves tried:4680 Time:1 milliseconds
+MINIMAX: Number of moves tried:4623 Time:5 milliseconds
+MINIMAX: Number of moves tried:4622 Time:5 milliseconds
+MINIMAX: Number of moves tried:4056 Time:2 milliseconds
+MINIMAX: Number of moves tried:4544 Time:1 milliseconds
+MINIMAX: Number of moves tried:4256 Time:1 milliseconds
+MINIMAX: Number of moves tried:3978 Time:1 milliseconds
+MINIMAX: Number of moves tried:3641 Time:1 milliseconds
+
+
+Move-count formula:
+Connect Four has 7 columns. At the very start of the game every column is available (each has 6 empty rows), so every node in the search tree branches exactly 7 ways for the first several plies.
+
+The search tree for depth d looks like this:
+
+Level	Who calls it	Moves tried
+1	calculateMove (root)	7
+2	expandMinNode(d-1) × 7	7²
+3	expandMaxNode(d-2) × 7²	7³
+…	…	…
+d	last alternating call	7^d
+Every board.move() success increments moveCount once, so:
+
+
+total = 7 + 7² + 7³ + … + 7^d
+      = 7 · (7^d − 1) / (7 − 1)
+      = (7^(d+1) − 7) / 6
+Concrete values:
+
+Depth	Formula	Count
+1	(7² − 7) / 6	7
+2	(7³ − 7) / 6	56
+3	(7⁴ − 7) / 6	399
+4	(7⁵ − 7) / 6	2,800
+This is exact because at game start no column is full, so the branching factor is a constant 7 at every level — the sum is simply a geometric series with ratio 7.
+
+Comment out:
+/* 
+if (strength > parentMinimum) {
+          board.undoLastMove();
+          return strength;
+        }
+*/
+
+Comment out:
+/*
+if (strength < parentMaximum) {
+          board.undoLastMove();
+          return strength;
+        }
+*/

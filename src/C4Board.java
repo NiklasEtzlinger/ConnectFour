@@ -17,7 +17,7 @@ public final class C4Board implements Board {
   public final static int SECOND_PLAYER_NUMBER = 1;
 
   public static final int NUMBER_OF_ROWS = 6; // the height of the board
-  public static final int NUMBER_OF_COLUMNS = 8; // the width of the board
+  public static final int NUMBER_OF_COLUMNS = 7; // the width of the board
   public static final int NUMBER_OF_SLOTS = NUMBER_OF_ROWS * NUMBER_OF_COLUMNS;
 
 //------------------------------------------
@@ -83,7 +83,13 @@ public final class C4Board implements Board {
 
     // create the rows
 
-    rows = new Vector<C4Row>(84);
+    // 84 was the hardcoded capacity for an 8-column board.
+    // General formula: horizontal + vertical + diagonal (both directions)
+    // = R*(C-3) + (R-3)*C + 2*(R-3)*(C-3)
+    rows = new Vector<C4Row>(
+        NUMBER_OF_ROWS * (NUMBER_OF_COLUMNS - 3)
+        + (NUMBER_OF_ROWS - 3) * NUMBER_OF_COLUMNS
+        + 2 * (NUMBER_OF_ROWS - 3) * (NUMBER_OF_COLUMNS - 3));
 
     /*
      * choose all possible groups of 4 slots a group of four is determined by 2

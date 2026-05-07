@@ -1,0 +1,28 @@
+\frametitle{Q8: Why the Computer Misses the Immediate Win}
+\begin{columns}[T]
+    \column{0.52\textwidth}
+      \begin{alertblock}{Root cause}
+        \footnotesize Every win scores \texttt{Integer.MAX\_VALUE} regardless of depth — a win in 1 move and a win in 3 moves look \emph{identical}.
+      \end{alertblock}
+      \begin{block}{Move-selection loop}
+        \begin{lstlisting}
+if (strength > maxStrength) {
+    maxStrength = strength;
+    maxIndex = i;
+}
+        \end{lstlisting}
+        \footnotesize Updates only on a \emph{strict} improvement — ties are ignored.
+      \end{block}
+    \column{0.44\textwidth}
+      \begin{block}{Scenario (left-to-right ordering)}
+        \begin{enumerate}\footnotesize
+          \item Col~0 tried first — search finds a forced win 3 moves deep. Returns \texttt{MAX\_VALUE}. \texttt{maxIndex = 0}.
+          \item Col~3 is the immediate win. Also returns \texttt{MAX\_VALUE}.
+          \item \texttt{MAX\_VALUE > MAX\_VALUE} is \textbf{false} — \texttt{maxIndex} stays at 0.
+          \item Computer plays col~0: wins, but not immediately.
+        \end{enumerate}
+      \end{block}
+      \begin{exampleblock}{Potential Fix}
+        \footnotesize Encode depth in the score: \texttt{MAX\_VALUE\,$-$\,depth}, so shallower wins always outrank deeper ones.
+      \end{exampleblock}
+  \end{columns}
